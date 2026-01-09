@@ -1,8 +1,9 @@
-#pragma once
 #include "analyzer.h"
 #include <fstream>
-#include <sstream>
+#include <vector>
+#include <string>
 #include <algorithm>
+#include <iostream>
 
 using namespace std;
 
@@ -16,28 +17,31 @@ void TripAnalyzer::ingestFile(const string& csvPath) {
     while (getline(file, line)) {
         if (line.empty()) continue;
 
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
-            line.pop_back();
-        }
+        if (line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
 
-        stringstream ss(line);
-        string field;
-        vector<string> row;
+        size_t p1 = line.find(',');
+        if (p1 == string::npos) continue;
 
-        while (getline(ss, field, ',')) {
-            row.push_back(field);
-        }
+        size_t p2 = line.find(',', p1 + 1);
+        if (p2 == string::npos) continue;
 
-        if (row.size() != 6) continue;
+        string zone = line.substr(p1 + 1, p2 - p1 - 1);
+        if (zone.empty()) continue;
 
-        const string& zone = row[1];
-        const string& dateTime = row[3];
+        size_t p3 = line.find(',', p2 + 1);
+        if (p3 == string::npos) continue;
 
-        if (zone.empty() || dateTime.length() < 13) continue;
+        size_t dateStart = p3 + 1;
 
-        try {
-            int hour = stoi(dateTime.substr(11, 2));
+        if (line.length() < dateStart + 13) continue;
+
+        char h1 = line[dateStart + 11];
+        char h2 = line[dateStart + 12];
+
+        if (h1 >= '0' && h1 <= '9' && h2 >= '0' && h2 <= '9') {
+            int hour = (h1 - '0') * 10 + (h2 - '0');
+
             if (hour >= 0 && hour <= 23) {
                 zoneAggregates[zone]++;
 
@@ -47,15 +51,13 @@ void TripAnalyzer::ingestFile(const string& csvPath) {
                 slotAggregates[zone][hour]++;
             }
         }
-        catch (...) {
-            continue;
-        }
     }
     file.close();
 }
 
 vector<ZoneCount> TripAnalyzer::topZones(int k) const {
     vector<ZoneCount> results;
+    results.reserve(zoneAggregates.size());
     for (const auto& pair : zoneAggregates) {
         results.push_back({ pair.first, pair.second });
     }
@@ -63,7 +65,7 @@ vector<ZoneCount> TripAnalyzer::topZones(int k) const {
     sort(results.begin(), results.end(), [](const ZoneCount& a, const ZoneCount& b) {
         if (a.count != b.count) return a.count > b.count;
         return a.zone < b.zone;
-        });
+    });
 
     if ((int)results.size() > k) results.resize(k);
     return results;
@@ -83,7 +85,7 @@ vector<SlotCount> TripAnalyzer::topBusySlots(int k) const {
         if (a.count != b.count) return a.count > b.count;
         if (a.zone != b.zone) return a.zone < b.zone;
         return a.hour < b.hour;
-        });
+    });
 
     if ((int)results.size() > k) results.resize(k);
     return results;
